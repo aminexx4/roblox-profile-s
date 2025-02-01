@@ -1,56 +1,56 @@
 import express from 'express';
-import cors from 'cors';
 import fetch from 'node-fetch';
+import cors from 'cors';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Enable CORS to allow frontend requests
 app.use(cors());
 
-// Route to fetch Roblox player profile
-app.get('/fetch-profile', async (req, res) => {
+app.get('/fetch-avatar', async (req, res) => {
     const username = req.query.username;
-    
     if (!username) {
-        return res.status(400).json({ error: "Username is required" });
+        return res.status(400).json({ error: "Missing username parameter" });
     }
 
     try {
-        // Get userId from username
+        // Step 1: Get userId from username
         const userIdResponse = await fetch(`https://users.roblox.com/v1/usernames/users`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usernames: [username], excludeBannedUsers: true })
         });
 
-        const userIdData = await userIdResponse.json();
-        const userId = userIdData.data?.[0]?.id;
+        if (!userIdResponse.ok) {
+            throw new Error(`Failed to fetch userId: ${userIdResponse.status}`);
+        }
 
-        if (!userId) {
+        const userIdData = await userIdResponse.json();
+        if (!userIdData.data || userIdData.data.length === 0) {
             return res.status(404).json({ error: "User not found" });
         }
 
-        // Fetch user profile data
-        const profileResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
-        const profileData = await profileResponse.json();
+        const userId = userIdData.data[0].id;
 
-        // Fetch avatar
+        // Step 2: Get avatar URL from userId
         const avatarResponse = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png&isCircular=false`);
-        const avatarData = await avatarResponse.json();
-        const avatarUrl = avatarData.data?.[0]?.imageUrl || null;
 
-        res.json({
-            username: profileData.name,
-            displayName: profileData.displayName,
-            description: profileData.description || "No description available",
-            avatarUrl: avatarUrl
-        });
+        if (!avatarResponse.ok) {
+            throw new Error(`Failed to fetch avatar: ${avatarResponse.status}`);
+        }
+
+        const avatarData = await avatarResponse.json();
+        if (!avatarData.data || avatarData.data.length === 0) {
+            return res.status(404).json({ error: "Avatar not found" });
+        }
+
+        const avatarUrl = avatarData.data[0].imageUrl;
+
+        res.json({ username, avatarUrl });
+
     } catch (error) {
-        console.error("Error fetching profile:", error);
-        res.status(500).json({ error: "Failed to fetch profile" });
+        console.error("Error fetching avatar:", error);
+        res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
-// Start server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
